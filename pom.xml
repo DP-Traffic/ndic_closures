@@ -7,7 +7,7 @@
 
     <properties>
         <compiler-plugin.version>3.14.0</compiler-plugin.version>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
@@ -15,6 +15,8 @@
         <quarkus.platform.version>3.28.2</quarkus.platform.version>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.4</surefire-plugin.version>
+        <spotless.maven.version>3.0.0</spotless.maven.version>
+        <google.java.format.version>1.29.0</google.java.format.version>
     </properties>
 
     <dependencyManagement>
@@ -116,6 +118,29 @@
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>${spotless.maven.version}</version>
+                <configuration>
+                    <java>
+                        <googleJavaFormat>
+                            <version>${google.java.format.version}</version>
+                        </googleJavaFormat>
+                    </java>
+                </configuration>
+                <executions>
+                    <!-- V CI: failne build při neformátovaném kódu -->
+                    <execution>
+                        <id>spotless-check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
         </plugins>
     </build>
 
