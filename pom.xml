@@ -2,7 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>cz.vutbr.fit.diploma.traffic</groupId>
-    <artifactId>ndic-datex2-common</artifactId>
+    <artifactId>ndic-closures</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 
     <properties>
@@ -15,8 +15,8 @@
         <quarkus.platform.version>3.28.2</quarkus.platform.version>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.4</surefire-plugin.version>
-        <spotless.maven.version>3.0.0</spotless.maven.version>
-        <google.java.format.version>1.29.0</google.java.format.version>
+        <spotless.maven.version>2.43.0</spotless.maven.version>
+        <google.java.format.version>1.17.0</google.java.format.version>
     </properties>
 
     <dependencyManagement>
@@ -134,7 +134,6 @@
                     </java>
                 </configuration>
                 <executions>
-                    <!-- V CI: failne build při neformátovaném kódu -->
                     <execution>
                         <id>spotless-check</id>
                         <phase>verify</phase>
