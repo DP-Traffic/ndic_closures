@@ -42,15 +42,18 @@ public class NDICFetcher {
   @ConfigProperty(name = "ndic.pass")
   String ndicPass;
 
-  // init URL je zároveň ta jediná, která se dotazuje periodicky
-  @ConfigProperty(name = "ndic.init.enabled", defaultValue = "true")
-  boolean initEnabled;
-
   @ConfigProperty(name = "ndic.init.url")
   String initUrl;
 
+  /** Kde uložit marker posledního úspěšného stažení (ISO čas jako text). */
   @ConfigProperty(name = "ndic.init.marker.path")
   String initMarkerPath;
+
+  /**
+   * Volitelné: kam uložit HTTP cache (ETag/Last-Modified). Default je markerPath + ".httpcache".
+   */
+  @ConfigProperty(name = "ndic.httpcache.path", defaultValue = "")
+  String httpCachePathCfg;
 
   @Inject
   @Channel("ndic-out")
@@ -59,7 +62,13 @@ public class NDICFetcher {
   @Inject ObjectMapper mapper;
 
   private HttpClient client;
-  private volatile String etag = "", lastMod = "";
+  private volatile String etag = "";
+  private volatile String lastMod = "";
+
+  private Path httpCachePath() {
+    if (httpCachePathCfg != null && !httpCachePathCfg.isBlank()) return Path.of(httpCachePathCfg);
+    return Path.of(initMarkerPath + ".httpcache");
+  }
 
   @PostConstruct
   void boot() {
@@ -76,8 +85,11 @@ public class NDICFetcher {
                 })
             .build();
 
-    // Jednorázový init (pouze pokud marker neexistuje)
-    if (initEnabled && !Files.exists(Path.of(initMarkerPath))) {
+    // Načti případný HTTP cache marker z minulého běhu
+    loadHttpCache();
+
+    // Jednorázový init (pokud marker neexistuje), ale už s Conditional GET
+    if (!Files.exists(Path.of(initMarkerPath))) {
       try {
         int n = fetchFrom(initUrl);
         LOG.infof("Initial pull done, published %d records", n);
@@ -87,8 +99,8 @@ public class NDICFetcher {
     }
   }
 
-  /** Každých 5s dotazuje pouze initUrl */
-  @Scheduled(every = "5s", delayed = "1s")
+  /** Poll podle configu; POZOR: config musí být celé např. '5s'. */
+  @Scheduled(every = "{ndic.poll.seconds}")
   void poll() {
     try {
       int recordsSend = fetchFrom(initUrl);
@@ -100,7 +112,7 @@ public class NDICFetcher {
     }
   }
 
-  /** STREAMING fetch + parse; při úspěšném downloadu zapíše marker s UTC časem */
+  /** STREAMING fetch + parse; při úspěchu zapíše marker (čas) i HTTP cache (ETag/Last-Modified). */
   int fetchFrom(String url) throws Exception {
     HttpRequest.Builder rb =
         HttpRequest.newBuilder()
@@ -110,20 +122,17 @@ public class NDICFetcher {
             .header("Accept-Encoding", "gzip")
             .GET();
 
-    if (!etag.isBlank()) {
-      rb.header("If-None-Match", etag);
-    }
-    if (!lastMod.isBlank()) {
-      rb.header("If-Modified-Since", lastMod);
-    }
+    // Conditional GET
+    if (!etag.isBlank()) rb.header("If-None-Match", etag);
+    if (!lastMod.isBlank()) rb.header("If-Modified-Since", lastMod);
 
     HttpResponse<InputStream> resp =
         client.send(rb.build(), HttpResponse.BodyHandlers.ofInputStream());
 
     int sc = resp.statusCode();
     if (sc == 304) {
-      LOG.info("No changes, marker not updated");
-      return 0; // žádná změna, marker neaktualizujeme
+      LOG.info("Not modified (304) — skipping download/parse/publish; marker not updated");
+      return 0;
     }
     if (sc != 200) {
       String msg = "(no body)";
@@ -135,13 +144,17 @@ public class NDICFetcher {
       throw new IOException("HTTP " + sc + ": " + msg);
     }
 
-    // 200 OK – uložíme ETag/Last-Modified
-    etag = resp.headers().firstValue("ETag").orElse("");
+    // 200 OK – uložíme ETag/Last-Modified (case-insensitive lookup)
+    etag = resp.headers().firstValue("etag").orElse(resp.headers().firstValue("ETag").orElse(""));
+    lastMod =
+        resp.headers()
+            .firstValue("last-modified")
+            .orElse(resp.headers().firstValue("Last-Modified").orElse(""));
 
-    lastMod = resp.headers().firstValue("Last-Modified").orElse("");
-
-    String ce = resp.headers().firstValue("Content-Encoding").orElse("");
-
+    String ce =
+        resp.headers()
+            .firstValue("content-encoding")
+            .orElse(resp.headers().firstValue("Content-Encoding").orElse(""));
     LOG.infof("Downloading DATEX II (encoding=%s)", ce.isBlank() ? "identity" : ce);
 
     // úspěšný pars + (potenciálně) publikace
@@ -154,16 +167,13 @@ public class NDICFetcher {
 
       List<Map<String, Object>> filtered = new ArrayList<>();
       for (Map<String, Object> it : pr.items()) {
-        String recType = String.valueOf(it.getOrDefault("recordType", "")).toLowerCase();
-
-        if (recType.contains("maintenanceworks")) {
+        if (DatexUtil.isAnyClosure(it)) {
           filtered.add(it);
         }
       }
 
       String now = OffsetDateTime.now(ZoneOffset.UTC).toString();
 
-      // i když po odfiltrování nic neposíláme, download proběhl – marker update chceme
       if (!filtered.isEmpty()) {
         for (Map<String, Object> it : filtered) {
           it.put("_source", "ndic");
@@ -174,9 +184,7 @@ public class NDICFetcher {
           }
 
           String key = String.valueOf(it.getOrDefault("situationRecordId", ""));
-          if (key.isBlank()) {
-            key = "roadworks-" + System.nanoTime();
-          }
+          if (key.isBlank()) key = "roadworks-" + System.nanoTime();
 
           String json = mapper.writeValueAsString(it);
           emitter.send(Record.of(key, json)).await().indefinitely();
@@ -185,6 +193,8 @@ public class NDICFetcher {
 
       // marker: poslední úspěšné STAŽENÍ (HTTP 200 + bez výjimky při parsování)
       writeMarker(now);
+      // ulož HTTP cache marker (po úspěšném zpracování)
+      saveHttpCache();
 
       LOG.infof("Parsed %d items, published %d roadworks", pr.items().size(), filtered.size());
       return filtered.size();
@@ -194,12 +204,39 @@ public class NDICFetcher {
   private void writeMarker(String utcIso) {
     try {
       Path p = Path.of(initMarkerPath);
-      if (p.getParent() != null) {
-        Files.createDirectories(p.getParent());
-      }
+      if (p.getParent() != null) Files.createDirectories(p.getParent());
       Files.writeString(p, utcIso, StandardCharsets.UTF_8);
     } catch (IOException e) {
       LOG.warnf(e, "Failed to write marker to %s", initMarkerPath);
+    }
+  }
+
+  private void loadHttpCache() {
+    Path p = httpCachePath();
+    try {
+      if (Files.exists(p)) {
+        String txt = Files.readString(p, StandardCharsets.UTF_8);
+        // velmi jednoduchý formát: první řádek etag, druhý řádek last-modified
+        String[] lines = txt.split("\\R", -1);
+        if (lines.length > 0) etag = lines[0] == null ? "" : lines[0].trim();
+        if (lines.length > 1) lastMod = lines[1] == null ? "" : lines[1].trim();
+        if (!etag.isBlank() || !lastMod.isBlank()) {
+          LOG.infof("Loaded HTTP cache: ETag='%s', Last-Modified='%s'", etag, lastMod);
+        }
+      }
+    } catch (IOException e) {
+      LOG.warnf(e, "Failed to read HTTP cache from %s", p);
+    }
+  }
+
+  private void saveHttpCache() {
+    Path p = httpCachePath();
+    try {
+      if (p.getParent() != null) Files.createDirectories(p.getParent());
+      String txt = (etag == null ? "" : etag) + "\n" + (lastMod == null ? "" : lastMod) + "\n";
+      Files.writeString(p, txt, StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      LOG.warnf(e, "Failed to write HTTP cache to %s", p);
     }
   }
 
