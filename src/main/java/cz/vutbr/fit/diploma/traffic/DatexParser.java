@@ -255,7 +255,7 @@ public final class DatexParser {
           String name = r.getLocalName();
 
           switch (name) {
-            // --- publication header ---
+              // --- publication header ---
             case "publicationTime" -> {
               if (pubTime == null) {
                 try {
@@ -265,7 +265,7 @@ public final class DatexParser {
               }
             }
 
-            // --- situation-level context ---
+              // --- situation-level context ---
             case "situation" -> {
               currentSituationId = attr(r, null, "id");
               currentSituationVersion = attr(r, null, "version");
@@ -281,7 +281,7 @@ public final class DatexParser {
               if (inHeaderInformation) currentUrgency = v;
             }
 
-            // --- situationRecord lifecycle ---
+              // --- situationRecord lifecycle ---
             case "situationRecord" -> {
               if (sr != null && sr.id != null) items.add(sr.toMap());
               sr = new SituationRecord();
@@ -294,14 +294,14 @@ public final class DatexParser {
               sr.urgency = currentUrgency;
             }
 
-            // --- validity & timing ---
+              // --- validity & timing ---
             case "validityStatus" -> sr.validityStatus = r.getElementText().trim();
             case "overallStartTime" -> sr.overallStartTime = r.getElementText().trim();
             case "overallEndTime" -> sr.overallEndTime = r.getElementText().trim();
-            case "probabilityOfOccurrence" ->
-                sr.probabilityOfOccurrence = r.getElementText().trim();
+            case "probabilityOfOccurrence" -> sr.probabilityOfOccurrence =
+                r.getElementText().trim();
 
-            // --- comments ---
+              // --- comments ---
             case "generalPublicComment" -> inGeneralPublicComment = true;
             case "value" -> {
               // Univerzální handler pro <values><value>... – zapisuje kontextově:
@@ -320,22 +320,22 @@ public final class DatexParser {
               // další <value> (např. sourceName) ignorujeme
             }
 
-            // --- types / management ---
+              // --- types / management ---
             case "networkManagementType" -> sr.networkMgmtType = r.getElementText().trim();
-            case "roadMaintenanceType", "roadworksType" ->
-                sr.roadworksType = r.getElementText().trim();
+            case "roadMaintenanceType", "roadworksType" -> sr.roadworksType =
+                r.getElementText().trim();
             case "restrictionType" -> sr.restrictionType = r.getElementText().trim();
-            case "roadOrCarriagewayOrLaneManagementType" ->
-                sr.roadOrCarriagewayOrLaneMgmtType = r.getElementText().trim();
+            case "roadOrCarriagewayOrLaneManagementType" -> sr.roadOrCarriagewayOrLaneMgmtType =
+                r.getElementText().trim();
             case "trafficControlType" -> sr.trafficControlType = r.getElementText().trim();
             case "speedLimit" -> sr.speedLimit = r.getElementText().trim();
 
-            // more typed
+              // more typed
             case "accidentType" -> sr.accidentType = r.getElementText().trim();
             case "vehicleObstructionType" -> sr.vehicleObstructionType = r.getElementText().trim();
             case "authorityOperationType" -> sr.authorityOperationType = r.getElementText().trim();
 
-            // --- simple location labels (globální i uvnitř LinearWithin) ---
+              // --- simple location labels (globální i uvnitř LinearWithin) ---
             case "roadNumber" -> {
               String v = r.getElementText().trim();
               if (currentLW != null) {
@@ -368,7 +368,7 @@ public final class DatexParser {
               inAreaName = true;
             }
 
-            // --- Alert-C Linear ---
+              // --- Alert-C Linear ---
             case "alertCLinear" -> {
               currentAlertCLinear = new AlertCLinear();
             }
@@ -407,12 +407,12 @@ public final class DatexParser {
               }
             }
 
-            // --- Alert-C Point ---
+              // --- Alert-C Point ---
             case "alertCPoint" -> {
               currentAlertCPoint = new AlertCPoint();
             }
 
-            // --- Global Network Linear ---
+              // --- Global Network Linear ---
             case "globalNetworkLinear" -> currentGN = new GNLinear();
             case "networkVersion" -> inGNNetworkVersion = true; // text přijde až v <value>
             case "linearGeometryType" -> {
@@ -475,7 +475,7 @@ public final class DatexParser {
               }
             }
 
-            // --- LinearWithinLinearElement (adresná metoda) ---
+              // --- LinearWithinLinearElement (adresná metoda) ---
             case "linearWithinLinearElement" -> currentLW = new LinearWithin();
             case "linearElement" -> {
               /* marker */
@@ -513,12 +513,12 @@ public final class DatexParser {
               currentUrgency = null;
             }
 
-            // komentáře & wrappery
+              // komentáře & wrappery
             case "generalPublicComment" -> inGeneralPublicComment = false;
             case "networkVersion" -> inGNNetworkVersion = false;
             case "areaName" -> inAreaName = false;
 
-            // Alert-C ends
+              // Alert-C ends
             case "alertCMethod2PrimaryPointLocation" -> inACPrimary = false;
             case "alertCMethod2SecondaryPointLocation" -> inACSecondary = false;
             case "alertCLinear" -> {
@@ -532,7 +532,7 @@ public final class DatexParser {
               currentAlertCPoint = null;
             }
 
-            // GN ends
+              // GN ends
             case "startPoint" -> inGNStartPoint = false;
             case "endPoint" -> inGNEndPoint = false;
             case "fromPoint" -> {
@@ -552,7 +552,7 @@ public final class DatexParser {
               currentGN = null;
             }
 
-            // LinearWithin ends
+              // LinearWithin ends
             case "linearWithinLinearElement" -> {
               if (sr != null && currentLW != null) sr.linearsWithin.add(currentLW);
               currentLW = null;

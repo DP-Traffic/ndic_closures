@@ -1,0 +1,29 @@
+name: Spotless
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+# Cancel in-progress PR verification workflows. We only care about verifying the latest commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  spotless-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Spotless check
+        run: ./mvnw -B -ntp -DskipTests spotless:check
