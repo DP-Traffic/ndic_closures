@@ -1,0 +1,55 @@
+name: Build & Publish Container
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write  # required to push to GHCR
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}  # ghcr.io/OWNER/REPO
+  JAVA_VERSION: '17'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Temurin JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: 'maven'
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push with Quarkus Jib
+        if: ${{ hashFiles('Dockerfile') == '' }}
+        run: |
+          ./mvnw -B -DskipTests \
+            -Dquarkus.container-image.build=true \
+            -Dquarkus.container-image.push=true \
+            -Dquarkus.container-image.registry=${{ env.REGISTRY }} \
+            -Dquarkus.container-image.group=${{ github.repository_owner }} \
+            -Dquarkus.container-image.name=${{ github.event.repository.name }} \
+            -Dquarkus.container-image.tag=${{ github.sha }} package
+          # Also tag & push 'latest'
+          ./mvnw -B -DskipTests \
+            -Dquarkus.container-image.build=true \
+            -Dquarkus.container-image.push=true \
+            -Dquarkus.container-image.registry=${{ env.REGISTRY }} \
+            -Dquarkus.container-image.group=${{ github.repository_owner }} \
+            -Dquarkus.container-image.name=${{ github.event.repository.name }} \
+            -Dquarkus.container-image.tag=latest package
